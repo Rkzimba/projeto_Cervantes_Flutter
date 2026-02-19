@@ -10,9 +10,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: "Cadastro SQLite",
-
       debugShowCheckedModeBanner: false,
-
       home: HomePage(),
     );
   }
@@ -25,7 +23,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   TextEditingController textoController = TextEditingController();
-
   TextEditingController numeroController = TextEditingController();
 
   List<Map<String, dynamic>> lista = [];
@@ -33,26 +30,43 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-
     carregar();
   }
 
   Future carregar() async {
     final dados = await DatabaseHelper.listar();
-
-    print("DADOS CARREGADOS:");
-    print(dados);
-
     setState(() {
       lista = dados;
     });
   }
 
+  void mostrarMensagem(String mensagem) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensagem)),
+    );
+  }
+
   Future inserir() async {
     try {
       final texto = textoController.text.trim();
+      final numeroTexto = numeroController.text.trim();
 
-      final numero = int.parse(numeroController.text.trim());
+      if (texto.isEmpty || numeroTexto.isEmpty) {
+        mostrarMensagem("Preencha todos os campos");
+        return;
+      }
+
+      final numero = int.tryParse(numeroTexto);
+
+      if (numero == null) {
+        mostrarMensagem("Digite um número válido");
+        return;
+      }
+
+      if (numero <= 0) {
+        mostrarMensagem("O número deve ser maior que zero");
+        return;
+      }
 
       await DatabaseHelper.inserir(texto, numero);
 
@@ -61,21 +75,19 @@ class _HomePageState extends State<HomePage> {
 
       await carregar();
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Inserido com sucesso")));
-    } catch (e) {
-      print(e);
+      mostrarMensagem("Inserido com sucesso");
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Erro: $e")));
+    } catch (e) {
+      if (e.toString().contains("UNIQUE")) {
+        mostrarMensagem("Esse número já está cadastrado");
+      } else {
+        mostrarMensagem("Erro ao inserir");
+      }
     }
   }
 
   Future deletar(int id) async {
     await DatabaseHelper.deletar(id);
-
     await carregar();
   }
 
@@ -83,64 +95,51 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text("Sistema de Cadastro")),
-
       body: Padding(
         padding: EdgeInsets.all(20),
-
         child: SizedBox.expand(
           child: Column(
             children: [
               TextField(
                 controller: textoController,
-
                 decoration: InputDecoration(labelText: "Campo Texto"),
               ),
-
               TextField(
                 controller: numeroController,
-
                 keyboardType: TextInputType.number,
-
                 decoration: InputDecoration(labelText: "Campo Número"),
               ),
-
               SizedBox(height: 10),
-
-              ElevatedButton(onPressed: inserir, child: Text("Inserir")),
-
+              ElevatedButton(
+                onPressed: inserir,
+                child: Text("Inserir"),
+              ),
               SizedBox(height: 20),
-
               Expanded(
                 child: lista.isEmpty
                     ? Center(child: Text("Nenhum cadastro ainda"))
                     : ListView.builder(
                         itemCount: lista.length,
-
                         itemBuilder: (context, index) {
                           var item = lista[index];
 
                           return Card(
                             child: ListTile(
                               title: Text(item["texto"].toString()),
-
                               subtitle: Text(
-                                "Número: " + item["numero"].toString(),
+                                "Número: ${item["numero"]}",
                               ),
-
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
                                     icon: Icon(Icons.edit),
-
                                     onPressed: () {
                                       mostrarDialogEditar(item);
                                     },
                                   ),
-
                                   IconButton(
                                     icon: Icon(Icons.delete),
-
                                     onPressed: () => deletar(item["id"]),
                                   ),
                                 ],
@@ -159,25 +158,21 @@ class _HomePageState extends State<HomePage> {
 
   void mostrarDialogEditar(Map<String, dynamic> item) {
     final textoEdit = TextEditingController(text: item["texto"]);
-
-    final numeroEdit = TextEditingController(text: item["numero"].toString());
+    final numeroEdit =
+        TextEditingController(text: item["numero"].toString());
 
     showDialog(
       context: context,
-
       builder: (_) {
         return AlertDialog(
           title: Text("Editar"),
-
           content: Column(
             mainAxisSize: MainAxisSize.min,
-
             children: [
               TextField(
                 controller: textoEdit,
                 decoration: InputDecoration(labelText: "Texto"),
               ),
-
               TextField(
                 controller: numeroEdit,
                 keyboardType: TextInputType.number,
@@ -185,31 +180,46 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
-
           actions: [
             TextButton(
               child: Text("Cancelar"),
-
               onPressed: () {
                 Navigator.pop(context);
               },
             ),
-
             TextButton(
               child: Text("Salvar"),
-
               onPressed: () async {
-                await DatabaseHelper.atualizar(
-                  item["id"],
+                final numeroTexto = numeroEdit.text.trim();
+                final numero = int.tryParse(numeroTexto);
 
-                  textoEdit.text,
+                if (numero == null) {
+                  mostrarMensagem("Digite um número válido");
+                  return;
+                }
 
-                  int.parse(numeroEdit.text),
-                );
+                if (numero <= 0) {
+                  mostrarMensagem("O número deve ser maior que zero");
+                  return;
+                }
 
-                Navigator.pop(context);
+                try {
+                  await DatabaseHelper.atualizar(
+                    item["id"],
+                    textoEdit.text.trim(),
+                    numero,
+                  );
 
-                carregar();
+                  Navigator.pop(context);
+                  carregar();
+
+                } catch (e) {
+                  if (e.toString().contains("UNIQUE")) {
+                    mostrarMensagem("Esse número já está cadastrado");
+                  } else {
+                    mostrarMensagem("Erro ao atualizar");
+                  }
+                }
               },
             ),
           ],
